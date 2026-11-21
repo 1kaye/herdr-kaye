@@ -521,11 +521,10 @@ pub fn parse_what_change(raw: &str) -> (String, BTreeMap<String, FileChange>) {
     let flush_hunk = |files: &mut BTreeMap<String, FileChange>,
                       cur_file: &Option<String>,
                       cur_hunk: &mut Option<Hunk>| {
-        if let (Some(path), Some(hunk)) = (cur_file, cur_hunk.take()) {
-            if let Some(fc) = files.get_mut(path) {
+        if let (Some(path), Some(hunk)) = (cur_file, cur_hunk.take())
+            && let Some(fc) = files.get_mut(path) {
                 fc.hunks.push(hunk);
             }
-        }
     };
 
     for raw_line in clean.lines() {
@@ -545,8 +544,8 @@ pub fn parse_what_change(raw: &str) -> (String, BTreeMap<String, FileChange>) {
         }
 
         // File header: `  [MODIFIED] path` / `  [NEW] path` / `  [DELETED] path`
-        if let Some(rest) = line.strip_prefix("  [") {
-            if let Some((tag, path_raw)) = rest.split_once("] ") {
+        if let Some(rest) = line.strip_prefix("  [")
+            && let Some((tag, path_raw)) = rest.split_once("] ") {
                 flush_hunk(&mut files, &cur_file, &mut cur_hunk);
                 let status = match tag {
                     "NEW" | "ADDED" => FileStatus::Added,
@@ -571,7 +570,6 @@ pub fn parse_what_change(raw: &str) -> (String, BTreeMap<String, FileChange>) {
                 cur_file = Some(path);
                 continue;
             }
-        }
 
         // Hunk header: `    @@ -old,len +new,len @@ ...`
         if let Some(rest) = line.strip_prefix("    @@ ") {
@@ -586,8 +584,8 @@ pub fn parse_what_change(raw: &str) -> (String, BTreeMap<String, FileChange>) {
         }
 
         // Hunk body lines (indented by 4 spaces by `kaye what change`)
-        if let (Some(path), Some(hunk)) = (&cur_file, &mut cur_hunk) {
-            if let Some(body) = line.strip_prefix("    ") {
+        if let (Some(path), Some(hunk)) = (&cur_file, &mut cur_hunk)
+            && let Some(body) = line.strip_prefix("    ") {
                 if let Some(added) = body.strip_prefix('+') {
                     hunk.lines.push(HunkLine::Add(added.to_string()));
                     if let Some(fc) = files.get_mut(path) {
@@ -604,7 +602,6 @@ pub fn parse_what_change(raw: &str) -> (String, BTreeMap<String, FileChange>) {
                     hunk.lines.push(HunkLine::Ctx(String::new()));
                 }
             }
-        }
     }
 
     flush_hunk(&mut files, &cur_file, &mut cur_hunk);
@@ -618,11 +615,10 @@ fn extract_checkpoint_message(header: &str) -> String {
         .unwrap_or(header)
         .trim();
     // Strip trailing ` (<relative time>)` added by `kaye what change`.
-    if let Some((msg, time_part)) = rest.rsplit_once(" (") {
-        if time_part.ends_with(')') {
+    if let Some((msg, time_part)) = rest.rsplit_once(" (")
+        && time_part.ends_with(')') {
             return msg.trim().to_string();
         }
-    }
     rest.to_string()
 }
 
@@ -720,11 +716,10 @@ fn find_hunk_anchor(disk_lines: &[String], hunk: &Hunk) -> usize {
     }
 
     for delta in 1..=60 {
-        if let Some(pos) = expected.checked_sub(delta) {
-            if matches_at(disk_lines, pos, &probe) {
+        if let Some(pos) = expected.checked_sub(delta)
+            && matches_at(disk_lines, pos, &probe) {
                 return pos;
             }
-        }
         if expected + delta < disk_lines.len() && matches_at(disk_lines, expected + delta, &probe) {
             return expected + delta;
         }

@@ -2,7 +2,7 @@ mod kaye;
 mod tui;
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 const PLUGIN_ID: &str = "ikaye.kaye";
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_panel(dir: &PathBuf) -> ExitCode {
+fn run_panel(dir: &Path) -> ExitCode {
     match tui::run(dir) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
@@ -47,29 +47,25 @@ fn open_herdr_panel(split: bool) -> ExitCode {
 
     if split {
         // Refocus existing KAYE split pane in the current tab instead of opening a duplicate.
-        if let Some(ref pane_id) = existing_pane {
-            if let Ok(st) = Command::new(&herdr_bin)
+        if let Some(ref pane_id) = existing_pane
+            && let Ok(st) = Command::new(&herdr_bin)
                 .args(["plugin", "pane", "focus", pane_id])
                 .status()
-            {
-                if st.success() {
+                && st.success() {
                     return ExitCode::SUCCESS;
                 }
-            }
-        }
     }
 
     let cwd = resolve_active_pane_cwd(&herdr_bin);
     let cwd_str = cwd.to_string_lossy().into_owned();
 
     // When switching from split-pane mode to modal popup mode, close the split pane first.
-    if !split {
-        if let Some(pane_id) = existing_pane {
+    if !split
+        && let Some(pane_id) = existing_pane {
             let _ = Command::new(&herdr_bin)
                 .args(["plugin", "pane", "close", &pane_id])
                 .status();
         }
-    }
 
     let mut cmd = Command::new(&herdr_bin);
     cmd.args([
@@ -89,11 +85,10 @@ fn open_herdr_panel(split: bool) -> ExitCode {
 
     if split {
         cmd.args(["--placement", "split", "--direction", "right"]);
-        if let Ok(pane_id) = env::var("HERDR_PANE_ID") {
-            if !pane_id.is_empty() {
+        if let Ok(pane_id) = env::var("HERDR_PANE_ID")
+            && !pane_id.is_empty() {
                 cmd.args(["--target-pane", &pane_id]);
             }
-        }
     }
 
     match cmd.status() {
@@ -114,17 +109,15 @@ fn resolve_panel_dir(explicit: Option<&str>) -> PathBuf {
         return PathBuf::from(p);
     }
     for key in ["HERDR_KAYE_CWD", "HERDR_ACTIVE_PANE_CWD"] {
-        if let Ok(val) = env::var(key) {
-            if !val.is_empty() {
+        if let Ok(val) = env::var(key)
+            && !val.is_empty() {
                 return PathBuf::from(val);
             }
-        }
     }
-    if let Ok(ctx) = env::var("HERDR_PLUGIN_CONTEXT_JSON") {
-        if let Some(cwd) = extract_cwd_from_json(&ctx) {
+    if let Ok(ctx) = env::var("HERDR_PLUGIN_CONTEXT_JSON")
+        && let Some(cwd) = extract_cwd_from_json(&ctx) {
             return PathBuf::from(cwd);
         }
-    }
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
@@ -137,66 +130,54 @@ fn resolve_active_pane_cwd(herdr_bin: &str) -> PathBuf {
         let focused_is_plugin = extract_json_string(c, "focused_pane_cwd")
             .zip(plugin_root.as_deref())
             .is_some_and(|(fc, pr)| fc == pr);
-        if !focused_is_plugin {
-            if let Some(cwd) = extract_cwd_from_json(c) {
-                if plugin_root.as_deref() != Some(cwd.as_str()) {
+        if !focused_is_plugin
+            && let Some(cwd) = extract_cwd_from_json(c)
+                && plugin_root.as_deref() != Some(cwd.as_str()) {
                     return PathBuf::from(cwd);
                 }
-            }
-        }
     }
 
     // Look up a non-KAYE pane in the active tab.
     if let Some(tab_id) = env::var("HERDR_TAB_ID").ok().filter(|s| !s.is_empty()) {
         let mut cmd = Command::new(herdr_bin);
         cmd.args(["pane", "list"]);
-        if let Ok(ws) = env::var("HERDR_WORKSPACE_ID") {
-            if !ws.is_empty() {
+        if let Ok(ws) = env::var("HERDR_WORKSPACE_ID")
+            && !ws.is_empty() {
                 cmd.args(["--workspace", &ws]);
             }
-        }
-        if let Ok(out) = cmd.output() {
-            if out.status.success() {
+        if let Ok(out) = cmd.output()
+            && out.status.success() {
                 let body = String::from_utf8_lossy(&out.stdout);
                 if let Some(cwd) = find_non_kaye_pane_cwd(&body, &tab_id, plugin_root.as_deref()) {
                     return PathBuf::from(cwd);
                 }
             }
-        }
     }
 
-    if let Some(ref c) = ctx {
-        if let Some(ws_cwd) = extract_json_string(c, "workspace_cwd").filter(|s| !s.is_empty()) {
-            if plugin_root.as_deref() != Some(ws_cwd.as_str()) {
+    if let Some(ref c) = ctx
+        && let Some(ws_cwd) = extract_json_string(c, "workspace_cwd").filter(|s| !s.is_empty())
+            && plugin_root.as_deref() != Some(ws_cwd.as_str()) {
                 return PathBuf::from(ws_cwd);
             }
-        }
-    }
 
-    if let Ok(pane_id) = env::var("HERDR_PANE_ID") {
-        if !pane_id.is_empty() {
-            if let Ok(out) = Command::new(herdr_bin).args(["pane", "get", &pane_id]).output() {
-                if out.status.success() {
+    if let Ok(pane_id) = env::var("HERDR_PANE_ID")
+        && !pane_id.is_empty()
+            && let Ok(out) = Command::new(herdr_bin).args(["pane", "get", &pane_id]).output()
+                && out.status.success() {
                     let body = String::from_utf8_lossy(&out.stdout);
-                    if let Some(cwd) = extract_cwd_from_json(&body) {
-                        if plugin_root.as_deref() != Some(cwd.as_str()) {
+                    if let Some(cwd) = extract_cwd_from_json(&body)
+                        && plugin_root.as_deref() != Some(cwd.as_str()) {
                             return PathBuf::from(cwd);
                         }
-                    }
                 }
-            }
-        }
-    }
-    if let Ok(out) = Command::new(herdr_bin).args(["pane", "current"]).output() {
-        if out.status.success() {
+    if let Ok(out) = Command::new(herdr_bin).args(["pane", "current"]).output()
+        && out.status.success() {
             let body = String::from_utf8_lossy(&out.stdout);
-            if let Some(cwd) = extract_cwd_from_json(&body) {
-                if plugin_root.as_deref() != Some(cwd.as_str()) {
+            if let Some(cwd) = extract_cwd_from_json(&body)
+                && plugin_root.as_deref() != Some(cwd.as_str()) {
                     return PathBuf::from(cwd);
                 }
-            }
         }
-    }
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
@@ -213,11 +194,10 @@ fn find_existing_kaye_pane(herdr_bin: &str) -> Option<String> {
     let tab_id = env::var("HERDR_TAB_ID").ok().filter(|s| !s.is_empty())?;
     let mut cmd = Command::new(herdr_bin);
     cmd.args(["pane", "list"]);
-    if let Ok(ws) = env::var("HERDR_WORKSPACE_ID") {
-        if !ws.is_empty() {
+    if let Ok(ws) = env::var("HERDR_WORKSPACE_ID")
+        && !ws.is_empty() {
             cmd.args(["--workspace", &ws]);
         }
-    }
     let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
@@ -233,11 +213,10 @@ fn find_pane_id_by_label_and_tab(json: &str, label: &str, tab_id: &str) -> Optio
         let abs_pos = offset + rel_pos;
         if let Some((start, end)) = enclosing_json_object(json, abs_pos) {
             let obj = &json[start..end];
-            if extract_json_string(obj, "tab_id").as_deref() == Some(tab_id) {
-                if let Some(pid) = extract_json_string(obj, "pane_id") {
+            if extract_json_string(obj, "tab_id").as_deref() == Some(tab_id)
+                && let Some(pid) = extract_json_string(obj, "pane_id") {
                     return Some(pid);
                 }
-            }
             offset = end;
         } else {
             break;
@@ -254,16 +233,13 @@ fn find_non_kaye_pane_cwd(json: &str, tab_id: &str, plugin_root: Option<&str>) -
         if let Some((start, end)) = enclosing_json_object(json, abs_pos) {
             let obj = &json[start..end];
             let is_kaye = extract_json_string(obj, "label").as_deref() == Some("KAYE");
-            if !is_kaye {
-                if let Some(cwd) = extract_json_string(obj, "foreground_cwd")
+            if !is_kaye
+                && let Some(cwd) = extract_json_string(obj, "foreground_cwd")
                     .or_else(|| extract_json_string(obj, "cwd"))
                     .filter(|s| !s.is_empty())
-                {
-                    if plugin_root != Some(cwd.as_str()) {
+                    && plugin_root != Some(cwd.as_str()) {
                         return Some(cwd);
                     }
-                }
-            }
             offset = end;
         } else {
             break;

@@ -109,13 +109,11 @@ fn stty_run(tty: &File, args: &[&str]) -> io::Result<()> {
 fn terminal_size(tty: &File) -> (usize, usize) {
     if let Ok(s) = stty_output(tty, &["size"]) {
         let mut it = s.split_whitespace();
-        if let (Some(r), Some(c)) = (it.next(), it.next()) {
-            if let (Ok(rows), Ok(cols)) = (r.parse::<usize>(), c.parse::<usize>()) {
-                if rows >= 8 && cols >= 20 {
+        if let (Some(r), Some(c)) = (it.next(), it.next())
+            && let (Ok(rows), Ok(cols)) = (r.parse::<usize>(), c.parse::<usize>())
+                && rows >= 8 && cols >= 20 {
                     return (rows, cols);
                 }
-            }
-        }
     }
     (24, 80)
 }
