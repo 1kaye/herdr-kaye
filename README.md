@@ -1,15 +1,15 @@
 # herdr-kaye
 
-A **Herdr (`>= 0.9.5`)** plugin for **KAYE** (local shadow-git VCS): interactive folder explorer with green `+` / red `-` change indicators powered by `kaye what change`, plus a full-code viewer with inline added/deleted highlights, search, and mouse support.
+A **Herdr (`>= 0.9.5`)** plugin for **KAYE** (local shadow-git VCS): interactive folder explorer with green `+` / red `-` change indicators powered by `kaye what change`, plus a full-width read-only code viewer with inline added/deleted highlights, search, and native Herdr mouse drag-select copy.
 
 ## Features
 
 - **Powered by `kaye what change`** — works immediately after `kaye save` checkpoints (shows checkpoint `cp N/N` and saved message in the header, expandable to checkpoint `N` or `all`) and **auto-refreshes** when new checkpoints are saved.
 - **Folder & File Explorer** — navigate into folders (`▸*` marks folders with changes and aggregated `+N -M` counts) and see file badges (`M`, `A`, `D`, `R`).
-- **Full-Code Read-Only View with `|` Cursor** — opens files full-width with a real `|` text cursor (`↑↓←→` / `h j k l` + `w`/`b` word movement), inline green `+` / red `-` highlights, `[1/N]` change counter, and native Herdr mouse drag-select / double-click word copy.
+- **Full-Width Read-Only Code View** — opens files full-width with line pointer (`▸`), inline green `+` / red `-` highlights, horizontal panning (`←`/`→` or `h`/`l`), `[1/N]` change counter (`Shift+↑` / `Shift+↓`), and native Herdr mouse drag-select copy.
 - **Interactive `/` Search** — global project-wide file/folder search in **FILES**, or in-file text search in **CODE** with `↑` / `↓` (or `n` / `N`) match navigation.
-- **Mouse Support & Native Drag-Select Copy** — click to select/open folders and files in **FILES**, and drag-select or double-click words directly in full-width **CODE** read mode to auto-copy via Herdr.
-- **Smart Refocus & Mode Switch** — pressing `prefix+shift+y` focuses back to an already-open KAYE split pane; pressing `prefix+y` closes any open KAYE split pane in the tab and opens the modal popup on the active project.
+- **Mouse Support & Native Drag-Select Copy** — click to select/open folders and files in **FILES**, and drag-select or double-click text in full-width **CODE** read mode to auto-copy via Herdr.
+- **Smart Refocus** — pressing `prefix+y` again while the KAYE panel is already open in the current tab focuses back to it instead of opening a duplicate.
 
 ## 1. Install
 
@@ -38,7 +38,7 @@ herdr plugin list
 herdr plugin action list --plugin ikaye.kaye
 ```
 
-## 2. Configure Keybindings in `~/.config/herdr/config.toml`
+## 2. Configure Keybinding in `~/.config/herdr/config.toml`
 
 Herdr does not auto-bind keys from plugins. Add `[[keys.command]]` to `~/.config/herdr/config.toml` (`prefix+y` does not conflict with default Herdr bindings or `prefix = "ctrl+space"`):
 
@@ -47,13 +47,7 @@ Herdr does not auto-bind keys from plugins. Add `[[keys.command]]` to `~/.config
 key = "prefix+y"
 type = "plugin_action"
 command = "ikaye.kaye.open"
-description = "Open KAYE explorer popup"
-
-[[keys.command]]
-key = "prefix+shift+y"
-type = "plugin_action"
-command = "ikaye.kaye.open-split"
-description = "Open KAYE explorer split"
+description = "Open KAYE explorer panel"
 ```
 
 Reload Herdr config without restarting your session:
@@ -66,8 +60,7 @@ herdr server reload-config
 
 ### Opening & Refocusing the Panel in Herdr
 
-- **`Ctrl+Space` → `y`** (`prefix+y`) — opens KAYE as a floating modal popup (`85% x 85%`), closing any open KAYE split pane in the current tab.
-- **`Ctrl+Space` → `Shift+Y`** (`prefix+shift+y`) — opens the KAYE panel on the right, or **jumps focus back to the already-open KAYE panel** in the current tab.
+- **`Ctrl+Space` → `y`** (`prefix+y`) — opens the KAYE split panel on the right, or **jumps focus back to the already-open KAYE panel** in the current tab.
 - **Switch back & forth between panes** (with your Herdr config):
   - `Ctrl+Alt+Left` / `Ctrl+Alt+Right` — move focus between your terminal and the KAYE pane
   - `Ctrl+Space` → `;` (`last_pane`) — toggle back and forth between the two most recent panes
@@ -77,10 +70,9 @@ herdr server reload-config
 
 | Key / Input | Action |
 |---|---|
-| `↑` / `↓` or `j` / `k` | Move selection (FILES) or move `\|` cursor up / down (CODE) |
-| `←` / `→` or `h` / `l` | Go up / open folder (in FILES), or move `\|` cursor left / right char-by-char with auto horizontal scroll (in CODE) |
-| `w` / `b` | Jump `\|` cursor forward / backward by word (in CODE) |
-| `0` / `$` or `Home` / `End` | Jump `\|` cursor to start / end of line (in CODE) |
+| `↑` / `↓` or `j` / `k` | Move selection (FILES) or move line pointer `▸` (CODE) |
+| `←` / `→` or `h` / `l` | Go up / open folder (in FILES), or pan code horizontally left / right (in CODE) |
+| `0` | Reset horizontal code scroll to column 0 (in CODE) |
 | `Enter` | Open selected folder, or enter full-width CODE read-only mode |
 | `Esc` | Clear active search, return from CODE read-only mode to FILES, or close panel (in FILES) |
 | `Tab` | Switch focus between **FILES** and **CODE** |
@@ -89,8 +81,9 @@ herdr server reload-config
 | `a` | Enter starting checkpoint `N` (`1` = initial, latest = `HEAD`) or `all` |
 | `f` | Toggle **edited-only** filter |
 | `r` | Refresh from KAYE |
-| **Left click** | Focus pane, select item, or click selected folder again to open it |
-| **Mouse wheel** | Scroll whichever pane the cursor is over |
+| **Left click** | Select item or open selected folder (in FILES) |
+| **Mouse drag / double-click** | Native Herdr drag-select / word-select auto-copy (in CODE read mode) |
+| **Mouse wheel** | Scroll whichever pane the cursor is over (in FILES) |
 | `q` / `Esc` | Close panel |
 
 ## 4. Standalone Test

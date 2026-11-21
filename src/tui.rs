@@ -73,7 +73,7 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let mut out = io::stdout();
-        let _ = out.write_all(b"\x1b[0 q\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l");
+        let _ = out.write_all(b"\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l");
         let _ = out.flush();
         let _ = stty_run(&self.tty, &[self.saved_stty.trim()]);
     }
@@ -299,7 +299,6 @@ struct App {
     code_title: String,
     code_scroll: usize,
     code_cursor: usize,
-    code_char_col: usize,
     code_col: usize,
     change_anchors: Vec<usize>,
     change_idx: usize,
@@ -338,7 +337,6 @@ impl App {
             code_title: String::new(),
             code_scroll: 0,
             code_cursor: 0,
-            code_char_col: 0,
             code_col: 0,
             change_anchors: Vec::new(),
             change_idx: 0,
@@ -366,7 +364,6 @@ impl App {
         let prev_name = self.selected_name();
         let prev_code_scroll = self.code_scroll;
         let prev_code_cursor = self.code_cursor;
-        let prev_code_char_col = self.code_char_col;
         let prev_code_col = self.code_col;
         let prev_list_scroll = self.list_scroll;
         let target = if self.rel_dir.is_empty() {
@@ -380,7 +377,6 @@ impl App {
             let max_idx = self.code_lines.len().saturating_sub(1);
             self.code_scroll = prev_code_scroll.min(max_idx);
             self.code_cursor = prev_code_cursor.min(max_idx);
-            self.code_char_col = prev_code_char_col;
             self.code_col = prev_code_col;
             self.list_scroll = prev_list_scroll.min(self.rows.len().saturating_sub(1));
         }
@@ -506,7 +502,6 @@ impl App {
     fn load_preview(&mut self) {
         self.code_scroll = 0;
         self.code_cursor = 0;
-        self.code_char_col = 0;
         self.code_col = 0;
         self.change_anchors.clear();
         self.change_idx = 0;
@@ -685,31 +680,15 @@ impl App {
         }
     }
 
-    fn current_code_line_expanded(&self) -> String {
-        self.code_lines
-            .get(self.code_cursor)
-            .map(|l| l.text.replace('\t', "    "))
-            .unwrap_or_default()
-    }
-
-    fn move_code_col(&mut self, delta: isize) {
-        let len = self.current_code_line_expanded().chars().count();
-        let cur = self.code_char_col.min(len);
-        self.code_char_col = (cur as isize + delta).clamp(0, len as isize) as usize;
-    }
-
-    fn move_code_word(&mut self, forward: bool) {
-        let line = self.current_code_line_expanded();
-        let cur = self.code_char_col.min(line.chars().count());
-        self.code_char_col = if forward {
-            next_word_col(&line, cur)
-        } else {
-            prev_word_col(&line, cur)
-        };
-    }
-
-    fn move_code_line_end(&mut self) {
-        self.code_char_col = self.current_code_line_expanded().chars().count();
+    fn pan_code_horizontal(&mut self, delta: isize) {
+        let max_col = self
+            .code_lines
+            .iter()
+            .map(|l| l.text.replace('\t', "    ").chars().count())
+            .max()
+            .unwrap_or(0)
+            .saturating_sub(1);
+        self.code_col = (self.code_col as isize + delta).clamp(0, max_col as isize) as usize;
     }
 
     fn move_cursor(&mut self, delta: isize, page_h: usize) {
@@ -953,7 +932,6 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
                     app.clear_search();
                 } else if app.focus == Focus::Code {
                     app.focus = Focus::Explorer;
-                    app.code_char_col = 0;
                     app.code_col = 0;
                 } else {
                     break;
@@ -964,23 +942,8 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
             Key::Down | Key::Char('j') => app.move_cursor(1, body_h),
             Key::PageUp | Key::Ctrl('u') => app.move_cursor(-(body_h as isize / 2).max(1), body_h),
             Key::PageDown | Key::Ctrl('d') => app.move_cursor((body_h as isize / 2).max(1), body_h),
-            Key::Char('g') => app.move_cursor(isize::MIN / 2, body_h),
-            Key::Char('G') => app.move_cursor(isize::MAX / 2, body_h),
-            Key::Home => {
-                if app.focus == Focus::Code {
-                    app.code_char_col = 0;
-                    app.code_col = 0;
-                } else {
-                    app.move_cursor(isize::MIN / 2, body_h);
-                }
-            }
-            Key::End => {
-                if app.focus == Focus::Code {
-                    app.move_code_line_end();
-                } else {
-                    app.move_cursor(isize::MAX / 2, body_h);
-                }
-            }
+            Key::Home | Key::Char('g') => app.move_cursor(isize::MIN / 2, body_h),
+            Key::End | Key::Char('G') => app.move_cursor(isize::MAX / 2, body_h),
             Key::Enter => {
                 if app.focus == Focus::Explorer {
                     app.enter_selected();
@@ -990,23 +953,19 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
                 if app.focus == Focus::Explorer {
                     app.enter_selected();
                 } else {
-                    app.move_code_col(1);
+                    app.pan_code_horizontal(4);
                 }
             }
             Key::Left | Key::Char('h') => {
                 if app.focus == Focus::Explorer {
                     app.go_up();
                 } else {
-                    app.move_code_col(-1);
+                    app.pan_code_horizontal(-4);
                 }
             }
-            Key::Char('w') if app.focus == Focus::Code => app.move_code_word(true),
-            Key::Char('b') if app.focus == Focus::Code => app.move_code_word(false),
             Key::Char('0') if app.focus == Focus::Code => {
-                app.code_char_col = 0;
                 app.code_col = 0;
             }
-            Key::Char('$') if app.focus == Focus::Code => app.move_code_line_end(),
             Key::Backspace => {
                 if app.focus == Focus::Explorer {
                     app.go_up();
@@ -1068,8 +1027,8 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
     // In CODE read-only mode: release app mouse capture so Herdr's native mouse drag-select &
     // double-click word copy work directly on full-width code; restore mouse capture in FILES.
     match app.focus {
-        Focus::Code => buf.push_str("\x1b[?1006l\x1b[?1000l\x1b[?25l\x1b[H"),
-        Focus::Explorer => buf.push_str("\x1b[?1000h\x1b[?1006h\x1b[?25l\x1b[H"),
+        Focus::Code => buf.push_str("\x1b[?1006l\x1b[?1000l\x1b[H"),
+        Focus::Explorer => buf.push_str("\x1b[?1000h\x1b[?1006h\x1b[H"),
     }
 
     let body_h = rows.saturating_sub(3).max(1);
@@ -1082,19 +1041,6 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
         app.code_scroll = app.code_cursor;
     } else if app.code_cursor >= app.code_scroll + body_h {
         app.code_scroll = app.code_cursor + 1 - body_h;
-    }
-
-    // Keep horizontal viewport aligned with the active character cursor in CODE mode.
-    let code_area_w = cols;
-    let text_view_w = code_area_w.saturating_sub(8).max(1);
-    let cur_line_len = app.current_code_line_expanded().chars().count();
-    let vis_char_col = app.code_char_col.min(cur_line_len);
-    if app.focus == Focus::Code {
-        if vis_char_col < app.code_col {
-            app.code_col = vis_char_col;
-        } else if vis_char_col >= app.code_col + text_view_w {
-            app.code_col = vis_char_col + 1 - text_view_w;
-        }
     }
 
     // Header bar
@@ -1170,12 +1116,8 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
     } else {
         format!(" [{}/{}]", app.change_idx + 1, app.change_anchors.len())
     };
-    let col_tag = if app.focus == Focus::Code {
-        format!(
-            " Ln {}, Col {}",
-            app.code_cursor + 1,
-            vis_char_col + 1
-        )
+    let col_tag = if app.code_col > 0 {
+        format!(" (col +{})", app.code_col)
     } else {
         String::new()
     };
@@ -1271,22 +1213,11 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
                 " ↑↓/jk:move  Enter/→:open  ←:up  /:search  a:cp  f:edited  q/Esc:close"
             }
             Focus::Code => {
-                " ↑↓←→/hjkl:cursor  w/b:word  Shift+↑↓:diff  /:search  Drag:copy  Esc:files  q:close"
+                " ↑↓/jk:line  ←→/hl:pan  Shift+↑↓:diff  /:search  Drag:copy  Esc:files  q:close"
             }
         };
         let fit = pad_right(&truncate_chars(footer, cols), cols);
         buf.push_str(&format!("{BG_BAR}{DIM}{fit}{RESET}\x1b[K"));
-    }
-
-    // Place a real `|` beam cursor (DECSCUSR 6) at the active character in read-only CODE mode.
-    if app.focus == Focus::Code
-        && app.search_mode != SearchMode::Typing
-        && !app.depth_prompt
-        && !app.code_lines.is_empty()
-    {
-        let screen_row = 3 + app.code_cursor.saturating_sub(app.code_scroll);
-        let screen_col = (9 + vis_char_col.saturating_sub(app.code_col)).min(cols);
-        buf.push_str(&format!("\x1b[{screen_row};{screen_col}H\x1b[6 q\x1b[?25h"));
     }
 
     let mut stdout = io::stdout();
@@ -1412,11 +1343,17 @@ fn render_code_row(app: &App, idx: usize, width: usize) -> String {
         return format!("{DIM}{fit}{RESET}");
     }
 
+    let is_cursor = app.focus == Focus::Code && idx == app.code_cursor;
     let is_active_match = app.is_code_search()
         && app.code_matches.get(app.code_match_idx).copied() == Some(idx);
-    let row_bg = if is_active_match { BG_SEL } else { "" };
+    let row_bg = if is_cursor || is_active_match {
+        BG_SEL
+    } else {
+        ""
+    };
+    let ptr = if is_cursor { "▸" } else { " " };
 
-    let gutter_w = 7usize;
+    let gutter_w = 8usize;
     let body_w = width.saturating_sub(gutter_w);
     let clean = line.text.replace('\t', "    ");
     let scrolled: String = clean.chars().skip(app.code_col).collect();
@@ -1434,12 +1371,12 @@ fn render_code_row(app: &App, idx: usize, width: usize) -> String {
                 .unwrap_or_else(|| "    ".to_string());
             let raw = pad_right(&truncate_chars(&format!("+{scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, GREEN, row_bg);
-            format!("{row_bg}{GREEN}{num} │ {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{GREEN}{num} │ {body}{RESET}")
         }
         LineKind::Deleted => {
             let raw = pad_right(&truncate_chars(&format!("-{scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, RED, row_bg);
-            format!("{row_bg}{RED}   - │ {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{RED}   - │ {body}{RESET}")
         }
         LineKind::Context => {
             let num = line
@@ -1448,58 +1385,10 @@ fn render_code_row(app: &App, idx: usize, width: usize) -> String {
                 .unwrap_or_else(|| "    ".to_string());
             let raw = pad_right(&truncate_chars(&format!(" {scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, "", row_bg);
-            format!("{row_bg}{DIM}{num} │{RESET}{row_bg} {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{DIM}{num} │{RESET}{row_bg} {body}{RESET}")
         }
         LineKind::Info => unreachable!(),
     }
-}
-
-pub fn next_word_col(line: &str, col: usize) -> usize {
-    let chars: Vec<char> = line.chars().collect();
-    let len = chars.len();
-    let mut i = col.min(len);
-    if i >= len {
-        return len;
-    }
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    if is_word(chars[i]) {
-        while i < len && is_word(chars[i]) {
-            i += 1;
-        }
-    } else if !chars[i].is_whitespace() {
-        while i < len && !is_word(chars[i]) && !chars[i].is_whitespace() {
-            i += 1;
-        }
-    }
-    while i < len && chars[i].is_whitespace() {
-        i += 1;
-    }
-    i
-}
-
-pub fn prev_word_col(line: &str, col: usize) -> usize {
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = col.min(chars.len());
-    if i == 0 {
-        return 0;
-    }
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    while i > 0 && chars[i - 1].is_whitespace() {
-        i -= 1;
-    }
-    if i == 0 {
-        return 0;
-    }
-    if is_word(chars[i - 1]) {
-        while i > 0 && is_word(chars[i - 1]) {
-            i -= 1;
-        }
-    } else {
-        while i > 0 && !is_word(chars[i - 1]) && !chars[i - 1].is_whitespace() {
-            i -= 1;
-        }
-    }
-    i
 }
 
 // Highlight case-insensitive occurrences of `query` on already-truncated text.

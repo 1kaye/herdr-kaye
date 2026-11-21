@@ -11,16 +11,13 @@ const ENTRYPOINT_ID: &str = "panel";
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("open") => {
-            let split = args.iter().any(|a| a == "--split");
-            open_herdr_panel(split)
-        }
+        Some("open") => open_herdr_panel(),
         Some("panel") => {
             let dir = resolve_panel_dir(args.get(1).map(String::as_str));
             run_panel(&dir)
         }
         Some("--help" | "-h") => {
-            eprintln!("Usage:\n  herdr-kaye open [--split]\n  herdr-kaye panel [path]");
+            eprintln!("Usage:\n  herdr-kaye open\n  herdr-kaye panel [path]");
             ExitCode::SUCCESS
         }
         Some(path) => run_panel(&PathBuf::from(path)),
@@ -41,31 +38,21 @@ fn run_panel(dir: &Path) -> ExitCode {
     }
 }
 
-fn open_herdr_panel(split: bool) -> ExitCode {
+fn open_herdr_panel() -> ExitCode {
     let herdr_bin = env::var("HERDR_BIN_PATH").unwrap_or_else(|_| "herdr".to_string());
-    let existing_pane = find_existing_kaye_pane(&herdr_bin);
 
-    if split {
-        // Refocus existing KAYE split pane in the current tab instead of opening a duplicate.
-        if let Some(ref pane_id) = existing_pane
-            && let Ok(st) = Command::new(&herdr_bin)
-                .args(["plugin", "pane", "focus", pane_id])
-                .status()
-                && st.success() {
-                    return ExitCode::SUCCESS;
-                }
+    // Refocus existing KAYE panel in the current tab instead of opening a duplicate.
+    if let Some(pane_id) = find_existing_kaye_pane(&herdr_bin)
+        && let Ok(st) = Command::new(&herdr_bin)
+            .args(["plugin", "pane", "focus", &pane_id])
+            .status()
+        && st.success()
+    {
+        return ExitCode::SUCCESS;
     }
 
     let cwd = resolve_active_pane_cwd(&herdr_bin);
     let cwd_str = cwd.to_string_lossy().into_owned();
-
-    // When switching from split-pane mode to modal popup mode, close the split pane first.
-    if !split
-        && let Some(pane_id) = existing_pane {
-            let _ = Command::new(&herdr_bin)
-                .args(["plugin", "pane", "close", &pane_id])
-                .status();
-        }
 
     let mut cmd = Command::new(&herdr_bin);
     cmd.args([
@@ -76,6 +63,10 @@ fn open_herdr_panel(split: bool) -> ExitCode {
         PLUGIN_ID,
         "--entrypoint",
         ENTRYPOINT_ID,
+        "--placement",
+        "split",
+        "--direction",
+        "right",
         // Keep plugin root as process cwd so relative manifest command always resolves;
         // pass the active pane's project path via HERDR_KAYE_CWD.
         "--env",
@@ -83,12 +74,10 @@ fn open_herdr_panel(split: bool) -> ExitCode {
         "--focus",
     ]);
 
-    if split {
-        cmd.args(["--placement", "split", "--direction", "right"]);
-        if let Ok(pane_id) = env::var("HERDR_PANE_ID")
-            && !pane_id.is_empty() {
-                cmd.args(["--target-pane", &pane_id]);
-            }
+    if let Ok(pane_id) = env::var("HERDR_PANE_ID")
+        && !pane_id.is_empty()
+    {
+        cmd.args(["--target-pane", &pane_id]);
     }
 
     match cmd.status() {
@@ -488,16 +477,5 @@ mod tests {
             find_non_kaye_pane_cwd(&sample, "wD:t1", Some(plugin_root)).as_deref(),
             Some("/home/ikaye/Projects/my-app")
         );
-    }
-
-    #[test]
-    fn word_cursor_jumps_across_words_and_symbols() {
-        let line = "fn main(arg: &Path) -> ExitCode";
-        assert_eq!(tui::next_word_col(line, 0), 3); // "main"
-        assert_eq!(tui::next_word_col(line, 3), 7); // "("
-        assert_eq!(tui::next_word_col(line, 7), 8); // "arg"
-        assert_eq!(tui::prev_word_col(line, 8), 7); // "("
-        assert_eq!(tui::prev_word_col(line, 7), 3); // "main"
-        assert_eq!(tui::prev_word_col(line, 3), 0); // "fn"
     }
 }
