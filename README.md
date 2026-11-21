@@ -4,7 +4,7 @@ A **Herdr (`>= 0.9.5`)** plugin for **KAYE** (local shadow-git VCS): interactive
 
 ## Features
 
-- **Powered by `kaye what change`** — works immediately after `kaye save` checkpoints (default: latest checkpoint, expandable to last `N` or `all`).
+- **Powered by `kaye what change`** — works immediately after `kaye save` checkpoints (default: latest checkpoint, expandable to checkpoint `N` or `all`) and **auto-refreshes** when new checkpoints are saved.
 - **Folder & File Explorer** — navigate into folders (`▸*` marks folders with changes and aggregated `+N -M` counts) and see file badges (`M`, `A`, `D`, `R`).
 - **Full-Code Inline View** — displays the entire file with line numbers, highlighting added lines in green (`+`) and deleted lines inline in red (`-`), auto-scrolling to the first change.
 - **Interactive `/` Search** — search file/folder names in **FILES**, or search text inside **CODE** and cycle through matches with `↑` / `↓` (or `n` / `N`).
@@ -83,7 +83,7 @@ herdr server reload-config
 | `Tab` | Switch focus between **FILES** and **CODE** |
 | `/` | Search folder/file names (in FILES) or text inside the file (in CODE); use `↑` / `↓` to move through matches, `Enter` to confirm, `Esc` to clear |
 | `Shift+↑` / `Shift+↓` or `n` / `N` | Jump to previous / next `+` / `-` change block (or `n`/`N` for search matches) |
-| `[` / `]` / `a` | Step back / forward from checkpoint `#N` (`1` = initial, latest = `HEAD`), or press `a` to enter checkpoint `N` or `all` |
+| `a` | Enter starting checkpoint `N` (`1` = initial, latest = `HEAD`) or `all` |
 | `f` | Toggle **edited-only** filter |
 | `r` | Refresh from KAYE |
 | **Left click** | Focus pane, select item, or click selected folder again to open it |

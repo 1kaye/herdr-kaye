@@ -4,7 +4,9 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::kaye::{CheckpointRange, CodeLine, Entry, FileStatus, KayeRepo, LineKind};
+use crate::kaye::{
+    CheckpointRange, CodeLine, Entry, FileStatus, KayeRepo, LineKind, kaye_head_hash,
+};
 
 // ANSI color codes
 const RESET: &str = "\x1b[0m";
@@ -349,7 +351,17 @@ impl App {
     }
 
     fn reload(&mut self) {
+        self.reload_inner(false);
+    }
+
+    fn reload_preserving_scroll(&mut self) {
+        self.reload_inner(true);
+    }
+
+    fn reload_inner(&mut self, preserve_scroll: bool) {
         let prev_name = self.selected_name();
+        let prev_code_scroll = self.code_scroll;
+        let prev_list_scroll = self.list_scroll;
         let target = if self.rel_dir.is_empty() {
             self.repo.root.clone()
         } else {
@@ -357,6 +369,10 @@ impl App {
         };
         self.repo = KayeRepo::load(&target, self.range);
         self.rebuild_rows(prev_name.as_deref());
+        if preserve_scroll && self.selected_name() == prev_name {
+            self.code_scroll = prev_code_scroll.min(self.code_lines.len().saturating_sub(1));
+            self.list_scroll = prev_list_scroll.min(self.rows.len().saturating_sub(1));
+        }
     }
 
     fn selected_name(&self) -> Option<String> {
@@ -737,15 +753,39 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
     let mut tty = open_tty()?;
     let _guard = TerminalGuard::enter(&tty)?;
     let mut app = App::new(start_dir);
+    let mut last_size = (0usize, 0usize);
+    let mut needs_render = true;
 
     loop {
         let (rows, cols) = terminal_size(&tty);
+        if (rows, cols) != last_size {
+            last_size = (rows, cols);
+            needs_render = true;
+        }
         let body_h = rows.saturating_sub(3).max(1);
-        render(&mut app, rows, cols)?;
+        if needs_render {
+            render(&mut app, rows, cols)?;
+            needs_render = false;
+        }
+
+        // Poll every 500ms so new `kaye save` checkpoints auto-refresh without pressing `r`.
+        if !poll_readable(tty.as_raw_fd(), 500) {
+            if !app.depth_prompt && app.search_mode != SearchMode::Typing {
+                let latest_head = kaye_head_hash(&app.repo.root);
+                if latest_head != app.repo.head_hash
+                    || (!app.repo.is_kaye_repo && !latest_head.is_empty())
+                {
+                    app.reload_preserving_scroll();
+                    needs_render = true;
+                }
+            }
+            continue;
+        }
 
         let Some(key) = read_key(&mut tty)? else {
             break;
         };
+        needs_render = true;
 
         // Mouse works in both normal and search modes.
         match key {
@@ -1111,7 +1151,7 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
         buf.push_str(&format!("{BG_BAR}{YELLOW}{fit}{RESET}\x1b[K"));
     } else {
         let footer =
-            " ↑↓/jk:move  Shift+↑↓:diff  Enter/Click:open  Tab:pane  /:search  [/]/a:cp  f:edited  q:close";
+            " ↑↓/jk:move  Shift+↑↓:diff  Enter/Click:open  Tab:pane  /:search  a:cp  f:edited  q:close";
         let fit = pad_right(&truncate_chars(footer, cols), cols);
         buf.push_str(&format!("{BG_BAR}{DIM}{fit}{RESET}\x1b[K"));
     }

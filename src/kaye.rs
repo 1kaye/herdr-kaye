@@ -102,6 +102,7 @@ pub struct KayeRepo {
     pub root: PathBuf,
     pub is_kaye_repo: bool,
     pub branch: String,
+    pub head_hash: String,
     pub total_checkpoints: usize,
     pub checkpoint_msg: String,
     pub changes: BTreeMap<String, FileChange>,
@@ -119,6 +120,7 @@ impl KayeRepo {
                 root: fallback_root,
                 is_kaye_repo: false,
                 branch: String::new(),
+                head_hash: String::new(),
                 total_checkpoints: 0,
                 checkpoint_msg: String::new(),
                 changes: BTreeMap::new(),
@@ -138,6 +140,8 @@ impl KayeRepo {
             .filter(|s| !s.is_empty() && s != "HEAD")
             .unwrap_or_else(|| "init".to_string());
 
+        let head_hash = kaye_head_hash(&root);
+
         let total_checkpoints = run_kaye(&root, &["rev-list", "--count", "HEAD"])
             .and_then(|b| String::from_utf8_lossy(&b).trim().parse::<usize>().ok())
             .unwrap_or(0);
@@ -154,6 +158,7 @@ impl KayeRepo {
             root,
             is_kaye_repo: true,
             branch,
+            head_hash,
             total_checkpoints,
             checkpoint_msg,
             changes,
@@ -467,6 +472,12 @@ impl KayeRepo {
             }
         }
     }
+}
+
+pub fn kaye_head_hash(cwd: &Path) -> String {
+    run_kaye(cwd, &["rev-parse", "HEAD"])
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string())
+        .unwrap_or_default()
 }
 
 fn run_kaye(cwd: &Path, args: &[&str]) -> Option<Vec<u8>> {
