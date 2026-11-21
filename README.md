@@ -4,12 +4,12 @@ A **Herdr (`>= 0.9.5`)** plugin for **KAYE** (local shadow-git VCS): interactive
 
 ## Features
 
-- **Powered by `kaye what change`** — works immediately after `kaye save` checkpoints (default: latest checkpoint, expandable to checkpoint `N` or `all`) and **auto-refreshes** when new checkpoints are saved.
+- **Powered by `kaye what change`** — works immediately after `kaye save` checkpoints (shows checkpoint `cp N/N` and saved message in the header, expandable to checkpoint `N` or `all`) and **auto-refreshes** when new checkpoints are saved.
 - **Folder & File Explorer** — navigate into folders (`▸*` marks folders with changes and aggregated `+N -M` counts) and see file badges (`M`, `A`, `D`, `R`).
-- **Full-Code Inline View** — displays the entire file with line numbers, highlighting added lines in green (`+`) and deleted lines inline in red (`-`), auto-scrolling to the first change.
-- **Interactive `/` Search** — search file/folder names in **FILES**, or search text inside **CODE** and cycle through matches with `↑` / `↓` (or `n` / `N`).
+- **Full-Code Inline View** — displays the entire file with line numbers, highlighting added lines in green (`+`) and deleted lines inline in red (`-`), showing a `[1/N]` change-point counter and jumping between blocks with `Shift+↑` / `Shift+↓`.
+- **Interactive `/` Search** — global project-wide file/folder search in **FILES**, or in-file text search in **CODE** with `↑` / `↓` (or `n` / `N`) match navigation.
 - **Mouse Support** — click to focus panes, select/open folders and files, and scroll with the mouse wheel.
-- **Smart Refocus** — pressing `prefix+y` again while a KAYE split pane is already open in the current tab focuses back to it instead of opening a duplicate.
+- **Smart Refocus & Mode Switch** — pressing `prefix+y` focuses back to an already-open KAYE split pane; pressing `prefix+shift+y` closes any open KAYE split pane in the tab and opens the modal popup on the active project.
 
 ## 1. Install
 
@@ -95,3 +95,7 @@ herdr server reload-config
 ```bash
 ./target/release/herdr-kaye panel /path/to/project
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 1kaye
