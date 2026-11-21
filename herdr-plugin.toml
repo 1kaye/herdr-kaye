@@ -1,0 +1,29 @@
+id = "ikaye.kaye"
+name = "KAYE Explorer"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "Interactive folder browser and +/- diff panel for KAYE shadow-git VCS"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["cargo", "build", "--release"]
+
+[[actions]]
+id = "open"
+title = "Open KAYE panel (popup)"
+contexts = ["workspace"]
+command = ["target/release/herdr-kaye", "open"]
+
+[[actions]]
+id = "open-split"
+title = "Open KAYE panel (split)"
+contexts = ["workspace"]
+command = ["target/release/herdr-kaye", "open", "--split"]
+
+[[panes]]
+id = "panel"
+title = "KAYE"
+placement = "popup"
+width = "85%"
+height = "85%"
+command = ["target/release/herdr-kaye", "panel"]
