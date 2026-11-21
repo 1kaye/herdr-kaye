@@ -489,4 +489,15 @@ mod tests {
             Some("/home/ikaye/Projects/my-app")
         );
     }
+
+    #[test]
+    fn word_cursor_jumps_across_words_and_symbols() {
+        let line = "fn main(arg: &Path) -> ExitCode";
+        assert_eq!(tui::next_word_col(line, 0), 3); // "main"
+        assert_eq!(tui::next_word_col(line, 3), 7); // "("
+        assert_eq!(tui::next_word_col(line, 7), 8); // "arg"
+        assert_eq!(tui::prev_word_col(line, 8), 7); // "("
+        assert_eq!(tui::prev_word_col(line, 7), 3); // "main"
+        assert_eq!(tui::prev_word_col(line, 3), 0); // "fn"
+    }
 }
