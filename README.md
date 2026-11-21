@@ -77,9 +77,11 @@ herdr server reload-config
 
 | Key / Input | Action |
 |---|---|
-| `↑` / `↓` or `j` / `k` | Move selection (FILES) or scroll code (CODE) |
-| `Enter` / `→` / `l` | Open selected folder, or move focus into CODE |
-| `Backspace` / `←` / `h` | Go up to parent folder, or return from CODE to FILES |
+| `↑` / `↓` or `j` / `k` | Move selection (FILES) or move line pointer (CODE) |
+| `←` / `→` or `h` / `l` | Go up / open folder (in FILES), or pan code horizontally left / right (in CODE) |
+| `0` | Reset horizontal code scroll to column 0 (in CODE) |
+| `Enter` | Open selected folder, or enter CODE read mode |
+| `Esc` | Clear active search, return from CODE read mode to FILES, or close panel (in FILES) |
 | `Tab` | Switch focus between **FILES** and **CODE** |
 | `/` | Search folder/file names (in FILES) or text inside the file (in CODE); use `↑` / `↓` to move through matches, `Enter` to confirm, `Esc` to clear |
 | `Shift+↑` / `Shift+↓` or `n` / `N` | Jump to previous / next `+` / `-` change block (or `n`/`N` for search matches) |

@@ -298,6 +298,8 @@ struct App {
     code_lines: Vec<CodeLine>,
     code_title: String,
     code_scroll: usize,
+    code_cursor: usize,
+    code_col: usize,
     change_anchors: Vec<usize>,
     change_idx: usize,
     search_mode: SearchMode,
@@ -334,6 +336,8 @@ impl App {
             code_lines: Vec::new(),
             code_title: String::new(),
             code_scroll: 0,
+            code_cursor: 0,
+            code_col: 0,
             change_anchors: Vec::new(),
             change_idx: 0,
             search_mode: SearchMode::Off,
@@ -359,6 +363,8 @@ impl App {
     fn reload_inner(&mut self, preserve_scroll: bool) {
         let prev_name = self.selected_name();
         let prev_code_scroll = self.code_scroll;
+        let prev_code_cursor = self.code_cursor;
+        let prev_code_col = self.code_col;
         let prev_list_scroll = self.list_scroll;
         let target = if self.rel_dir.is_empty() {
             self.repo.root.clone()
@@ -368,7 +374,10 @@ impl App {
         self.repo = KayeRepo::load(&target, self.range);
         self.rebuild_rows(prev_name.as_deref());
         if preserve_scroll && self.selected_name() == prev_name {
-            self.code_scroll = prev_code_scroll.min(self.code_lines.len().saturating_sub(1));
+            let max_idx = self.code_lines.len().saturating_sub(1);
+            self.code_scroll = prev_code_scroll.min(max_idx);
+            self.code_cursor = prev_code_cursor.min(max_idx);
+            self.code_col = prev_code_col;
             self.list_scroll = prev_list_scroll.min(self.rows.len().saturating_sub(1));
         }
     }
@@ -449,6 +458,8 @@ impl App {
     }
 
     fn scroll_code_to(&mut self, line_idx: usize, page_h: usize) {
+        let max_idx = self.code_lines.len().saturating_sub(1);
+        self.code_cursor = line_idx.min(max_idx);
         let max_scroll = self.code_lines.len().saturating_sub(page_h);
         self.code_scroll = line_idx.saturating_sub(4).min(max_scroll);
     }
@@ -490,6 +501,8 @@ impl App {
 
     fn load_preview(&mut self) {
         self.code_scroll = 0;
+        self.code_cursor = 0;
+        self.code_col = 0;
         self.change_anchors.clear();
         self.change_idx = 0;
         if self.search_target == Focus::Code {
@@ -564,6 +577,7 @@ impl App {
                 }
                 self.code_lines = lines;
                 if let Some(first) = first_change {
+                    self.code_cursor = first;
                     self.code_scroll = first.saturating_sub(4);
                 }
             }
@@ -653,16 +667,34 @@ impl App {
         }
     }
 
-    fn scroll_code(&mut self, delta: isize, page_h: usize) {
-        let max_scroll = self.code_lines.len().saturating_sub(page_h);
-        self.code_scroll =
-            (self.code_scroll as isize + delta).clamp(0, max_scroll as isize) as usize;
+    fn move_code_cursor(&mut self, delta: isize, page_h: usize) {
+        if self.code_lines.is_empty() {
+            return;
+        }
+        let max_idx = self.code_lines.len().saturating_sub(1) as isize;
+        self.code_cursor = (self.code_cursor as isize + delta).clamp(0, max_idx) as usize;
+        if self.code_cursor < self.code_scroll {
+            self.code_scroll = self.code_cursor;
+        } else if self.code_cursor >= self.code_scroll + page_h {
+            self.code_scroll = self.code_cursor + 1 - page_h;
+        }
+    }
+
+    fn pan_code_horizontal(&mut self, delta: isize) {
+        let max_col = self
+            .code_lines
+            .iter()
+            .map(|l| l.text.replace('\t', "    ").chars().count())
+            .max()
+            .unwrap_or(0)
+            .saturating_sub(1);
+        self.code_col = (self.code_col as isize + delta).clamp(0, max_col as isize) as usize;
     }
 
     fn move_cursor(&mut self, delta: isize, page_h: usize) {
         match self.focus {
             Focus::Explorer => self.move_explorer(delta, page_h),
-            Focus::Code => self.scroll_code(delta, page_h),
+            Focus::Code => self.move_code_cursor(delta, page_h),
         }
     }
 
@@ -715,6 +747,10 @@ impl App {
             }
         } else {
             self.focus = Focus::Code;
+            let idx = self.code_scroll + body_idx;
+            if idx < self.code_lines.len() {
+                self.code_cursor = idx;
+            }
         }
     }
 
@@ -728,7 +764,7 @@ impl App {
         if over_explorer {
             self.move_explorer(delta, body_h);
         } else {
-            self.scroll_code(delta, body_h);
+            self.move_code_cursor(delta, body_h);
         }
     }
 }
@@ -894,6 +930,9 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
             Key::Esc => {
                 if app.search_mode != SearchMode::Off {
                     app.clear_search();
+                } else if app.focus == Focus::Code {
+                    app.focus = Focus::Explorer;
+                    app.code_col = 0;
                 } else {
                     break;
                 }
@@ -905,17 +944,32 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
             Key::PageDown | Key::Ctrl('d') => app.move_cursor((body_h as isize / 2).max(1), body_h),
             Key::Home | Key::Char('g') => app.move_cursor(isize::MIN / 2, body_h),
             Key::End | Key::Char('G') => app.move_cursor(isize::MAX / 2, body_h),
-            Key::Enter | Key::Right | Key::Char('l') => {
+            Key::Enter => {
                 if app.focus == Focus::Explorer {
                     app.enter_selected();
                 }
             }
-            Key::Backspace | Key::Left | Key::Char('h') => {
-                if app.focus == Focus::Code {
-                    app.focus = Focus::Explorer;
+            Key::Right | Key::Char('l') => {
+                if app.focus == Focus::Explorer {
+                    app.enter_selected();
                 } else {
+                    app.pan_code_horizontal(4);
+                }
+            }
+            Key::Left | Key::Char('h') => {
+                if app.focus == Focus::Explorer {
+                    app.go_up();
+                } else {
+                    app.pan_code_horizontal(-4);
+                }
+            }
+            Key::Backspace => {
+                if app.focus == Focus::Explorer {
                     app.go_up();
                 }
+            }
+            Key::Char('0') if app.focus == Focus::Code => {
+                app.code_col = 0;
             }
             Key::Tab => {
                 app.focus = match app.focus {
@@ -977,6 +1031,11 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
         app.list_scroll = app.selected;
     } else if app.selected >= app.list_scroll + body_h {
         app.list_scroll = app.selected + 1 - body_h;
+    }
+    if app.code_cursor < app.code_scroll {
+        app.code_scroll = app.code_cursor;
+    } else if app.code_cursor >= app.code_scroll + body_h {
+        app.code_scroll = app.code_cursor + 1 - body_h;
     }
 
     // Header bar
@@ -1050,6 +1109,11 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
     } else {
         format!(" [{}/{}]", app.change_idx + 1, app.change_anchors.len())
     };
+    let col_tag = if app.code_col > 0 {
+        format!(" (col +{})", app.code_col)
+    } else {
+        String::new()
+    };
 
     if split {
         let exp_hdr = format!(
@@ -1061,10 +1125,11 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
             }
         );
         let code_hdr = format!(
-            " {}{}{}",
+            " {}{}{}{}",
             if app.focus == Focus::Code { "* " } else { "" },
             app.code_title,
-            hunk_tag
+            hunk_tag,
+            col_tag
         );
         let l_txt = pad_right(&truncate_chars(&exp_hdr, left_w), left_w);
         let r_txt = pad_right(&truncate_chars(&code_hdr, right_w), right_w);
@@ -1076,7 +1141,10 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
     } else {
         let hdr = match app.focus {
             Focus::Explorer => " FILES (Tab/Click -> Code)".to_string(),
-            Focus::Code => format!(" CODE: {}{} (Tab/Click -> Files)", app.code_title, hunk_tag),
+            Focus::Code => format!(
+                " CODE: {}{}{} (Esc -> Files)",
+                app.code_title, hunk_tag, col_tag
+            ),
         };
         buf.push_str(&format!(
             "{BOLD}{}{RESET}\x1b[K\r\n",
@@ -1148,8 +1216,14 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
         let fit = pad_right(&truncate_chars(&footer, cols), cols);
         buf.push_str(&format!("{BG_BAR}{YELLOW}{fit}{RESET}\x1b[K"));
     } else {
-        let footer =
-            " ↑↓/jk:move  Shift+↑↓:diff  Enter/Click:open  Tab:pane  /:search  a:cp  f:edited  q:close";
+        let footer = match app.focus {
+            Focus::Explorer => {
+                " ↑↓/jk:move  Enter/→:open  ←:up  Tab:code  /:search  a:cp  f:edited  q/Esc:close"
+            }
+            Focus::Code => {
+                " ↑↓/jk:line  ←→/hl:pan  Shift+↑↓:diff  /:search  a:cp  Esc:files  q:close"
+            }
+        };
         let fit = pad_right(&truncate_chars(footer, cols), cols);
         buf.push_str(&format!("{BG_BAR}{DIM}{fit}{RESET}\x1b[K"));
     }
@@ -1277,13 +1351,20 @@ fn render_code_row(app: &App, idx: usize, width: usize) -> String {
         return format!("{DIM}{fit}{RESET}");
     }
 
+    let is_cursor = app.focus == Focus::Code && idx == app.code_cursor;
     let is_active_match = app.is_code_search()
         && app.code_matches.get(app.code_match_idx).copied() == Some(idx);
-    let row_bg = if is_active_match { BG_SEL } else { "" };
+    let row_bg = if is_cursor || is_active_match {
+        BG_SEL
+    } else {
+        ""
+    };
+    let ptr = if is_cursor { "▸" } else { " " };
 
-    let gutter_w = 7usize;
+    let gutter_w = 8usize;
     let body_w = width.saturating_sub(gutter_w);
     let clean = line.text.replace('\t', "    ");
+    let scrolled: String = clean.chars().skip(app.code_col).collect();
     let query = if app.is_code_search() {
         app.search_query.as_str()
     } else {
@@ -1296,23 +1377,23 @@ fn render_code_row(app: &App, idx: usize, width: usize) -> String {
                 .line_no
                 .map(|n| format!("{n:>4}"))
                 .unwrap_or_else(|| "    ".to_string());
-            let raw = pad_right(&truncate_chars(&format!("+{clean}"), body_w), body_w);
+            let raw = pad_right(&truncate_chars(&format!("+{scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, GREEN, row_bg);
-            format!("{row_bg}{GREEN}{num} │ {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{GREEN}{num} │ {body}{RESET}")
         }
         LineKind::Deleted => {
-            let raw = pad_right(&truncate_chars(&format!("-{clean}"), body_w), body_w);
+            let raw = pad_right(&truncate_chars(&format!("-{scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, RED, row_bg);
-            format!("{row_bg}{RED}   - │ {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{RED}   - │ {body}{RESET}")
         }
         LineKind::Context => {
             let num = line
                 .line_no
                 .map(|n| format!("{n:>4}"))
                 .unwrap_or_else(|| "    ".to_string());
-            let raw = pad_right(&truncate_chars(&format!(" {clean}"), body_w), body_w);
+            let raw = pad_right(&truncate_chars(&format!(" {scrolled}"), body_w), body_w);
             let body = highlight_query(&raw, query, "", row_bg);
-            format!("{row_bg}{DIM}{num} │{RESET}{row_bg} {body}{RESET}")
+            format!("{row_bg}{CYAN}{ptr}{RESET}{row_bg}{DIM}{num} │{RESET}{row_bg} {body}{RESET}")
         }
         LineKind::Info => unreachable!(),
     }
