@@ -4,7 +4,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::kaye::{CodeLine, Entry, FileStatus, KayeRepo, LineKind};
+use crate::kaye::{CheckpointRange, CodeLine, Entry, FileStatus, KayeRepo, LineKind};
 
 // ANSI color codes
 const RESET: &str = "\x1b[0m";
@@ -288,8 +288,7 @@ enum Row {
 
 struct App {
     repo: KayeRepo,
-    // Some(N) = `kaye what change N`, None = `kaye what change all`
-    depth: Option<usize>,
+    range: CheckpointRange,
     rel_dir: String,
     rows: Vec<Row>,
     selected: usize,
@@ -312,8 +311,8 @@ struct App {
 
 impl App {
     fn new(start_dir: &Path) -> Self {
-        let depth = Some(1);
-        let repo = KayeRepo::load(start_dir, depth);
+        let range = CheckpointRange::Latest;
+        let repo = KayeRepo::load(start_dir, range);
         let canon_start = start_dir
             .canonicalize()
             .unwrap_or_else(|_| start_dir.to_path_buf());
@@ -325,7 +324,7 @@ impl App {
 
         let mut app = Self {
             repo,
-            depth,
+            range,
             rel_dir,
             rows: Vec::new(),
             selected: 0,
@@ -356,7 +355,7 @@ impl App {
         } else {
             self.repo.root.join(&self.rel_dir)
         };
-        self.repo = KayeRepo::load(&target, self.depth);
+        self.repo = KayeRepo::load(&target, self.range);
         self.rebuild_rows(prev_name.as_deref());
     }
 
@@ -777,11 +776,16 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
                     app.depth_prompt = false;
                     app.depth_input.clear();
                     if raw == "all" || raw == "a" {
-                        app.depth = None;
+                        app.range = CheckpointRange::All;
                         app.reload();
                     } else if let Ok(n) = raw.parse::<usize>() {
                         let max_cp = app.repo.total_checkpoints.max(1);
-                        app.depth = Some(n.clamp(1, max_cp));
+                        let clamped = n.clamp(1, max_cp);
+                        app.range = if clamped == max_cp {
+                            CheckpointRange::Latest
+                        } else {
+                            CheckpointRange::From(clamped)
+                        };
                         app.reload();
                     }
                 }
@@ -885,14 +889,29 @@ pub fn run(start_dir: &Path) -> io::Result<()> {
             Key::ShiftUp => app.jump_change(false, body_h, true),
             Key::Char('n') => app.jump_change(true, body_h, false),
             Key::Char('N') => app.jump_change(false, body_h, false),
-            Key::Char(']') => {
+            Key::Char('[') => {
                 let max_cp = app.repo.total_checkpoints.max(1);
-                app.depth = Some(app.depth.unwrap_or(max_cp).saturating_add(1).min(max_cp));
+                let cur = match app.range {
+                    CheckpointRange::Latest => max_cp,
+                    CheckpointRange::From(n) => n,
+                    CheckpointRange::All => 1,
+                };
+                app.range = CheckpointRange::From(cur.saturating_sub(1).max(1));
                 app.reload();
             }
-            Key::Char('[') => {
-                let cur = app.depth.unwrap_or(app.repo.total_checkpoints.max(1));
-                app.depth = Some(cur.saturating_sub(1).max(1));
+            Key::Char(']') => {
+                let max_cp = app.repo.total_checkpoints.max(1);
+                let cur = match app.range {
+                    CheckpointRange::Latest => max_cp,
+                    CheckpointRange::From(n) => n,
+                    CheckpointRange::All => 1,
+                };
+                let next = (cur + 1).min(max_cp);
+                app.range = if next >= max_cp {
+                    CheckpointRange::Latest
+                } else {
+                    CheckpointRange::From(next)
+                };
                 app.reload();
             }
             Key::Char('a') => {
@@ -936,9 +955,18 @@ fn render(app: &mut App, rows: usize, cols: usize) -> io::Result<()> {
     };
     let total = app.repo.total_summary();
     let mode_tag = if app.changed_only { " [edited]" } else { "" };
-    let range_tag = match app.depth {
-        Some(n) => format!("last {n}/{}", app.repo.total_checkpoints),
-        None => format!("all/{}", app.repo.total_checkpoints),
+    let max_cp = app.repo.total_checkpoints;
+    let range_tag = match app.range {
+        CheckpointRange::Latest => format!("cp {max_cp}/{max_cp}"),
+        CheckpointRange::From(n) => {
+            let clamped = n.clamp(1, max_cp.max(1));
+            if clamped >= max_cp {
+                format!("cp {max_cp}/{max_cp}")
+            } else {
+                format!("cp {clamped}..{max_cp}/{max_cp}")
+            }
+        }
+        CheckpointRange::All => format!("cp 1..{max_cp} (all)"),
     };
 
     let (header_left, header_right_plain, header_right_styled) = if app.repo.is_kaye_repo {

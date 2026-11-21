@@ -76,6 +76,28 @@ pub struct CodeLine {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckpointRange {
+    Latest,
+    From(usize),
+    All,
+}
+
+impl CheckpointRange {
+    pub fn to_what_change_arg(self, total: usize) -> String {
+        match self {
+            Self::Latest => "1".to_string(),
+            Self::From(cp) => {
+                let max_cp = total.max(1);
+                let clamped = cp.clamp(1, max_cp);
+                let count = max_cp.saturating_sub(clamped) + 1;
+                count.to_string()
+            }
+            Self::All => "all".to_string(),
+        }
+    }
+}
+
 pub struct KayeRepo {
     pub root: PathBuf,
     pub is_kaye_repo: bool,
@@ -87,8 +109,7 @@ pub struct KayeRepo {
 }
 
 impl KayeRepo {
-    // depth = Some(N) runs `kaye what change N`; None runs `kaye what change all`.
-    pub fn load(start_dir: &Path, depth: Option<usize>) -> Self {
+    pub fn load(start_dir: &Path, range: CheckpointRange) -> Self {
         let fallback_root = start_dir
             .canonicalize()
             .unwrap_or_else(|_| start_dir.to_path_buf());
@@ -121,10 +142,7 @@ impl KayeRepo {
             .and_then(|b| String::from_utf8_lossy(&b).trim().parse::<usize>().ok())
             .unwrap_or(0);
 
-        let depth_arg = match depth {
-            Some(n) => n.max(1).to_string(),
-            None => "all".to_string(),
-        };
+        let depth_arg = range.to_what_change_arg(total_checkpoints);
         let raw = run_kaye(&root, &["what", "change", &depth_arg])
             .map(|b| String::from_utf8_lossy(&b).into_owned())
             .unwrap_or_default();

@@ -268,7 +268,8 @@ fn parse_json_str(s: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::kaye::{
-        FileChange, FileStatus, LineKind, aggregate_dirs, build_full_code_view, parse_what_change,
+        CheckpointRange, FileChange, FileStatus, LineKind, aggregate_dirs, build_full_code_view,
+        parse_what_change,
     };
     use std::collections::BTreeMap;
 
@@ -411,5 +412,14 @@ mod tests {
             tui::Key::MouseScrollDown { col: 40 }
         );
         assert_eq!(tui::parse_sgr_mouse("0;12;5m"), tui::Key::Other);
+    }
+
+    #[test]
+    fn checkpoint_range_maps_initial_1_to_latest_11() {
+        assert_eq!(CheckpointRange::Latest.to_what_change_arg(11), "1");
+        assert_eq!(CheckpointRange::From(11).to_what_change_arg(11), "1");
+        assert_eq!(CheckpointRange::From(9).to_what_change_arg(11), "3");
+        assert_eq!(CheckpointRange::From(1).to_what_change_arg(11), "11");
+        assert_eq!(CheckpointRange::All.to_what_change_arg(11), "all");
     }
 }
